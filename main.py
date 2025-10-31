@@ -22,7 +22,7 @@ class MyPlugin(Star):
         yield event.plain_result(f"好了好了, {user}被{user_name}草饲了。") # 发送一条纯文本消息
 
     @filter.command("何意味")
-    async def handle_forward_message(self, event: AstrMessageEvent):
+    async def handle_forward_message(self, event: AstrMessageEvent, *args, **kwargs):
         """使用 /何意味 命令触发转发/合并消息概述"""
         try:
             # 获取消息链
