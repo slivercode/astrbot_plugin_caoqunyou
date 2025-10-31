@@ -22,6 +22,16 @@ class MyPlugin(Star):
             # 获取消息对象
             message_obj = event.message_obj
 
+            # 调试：打印消息结构
+            logger.info("=" * 50)
+            logger.info(f"消息对象类型: {type(message_obj)}")
+            logger.info(f"消息链长度: {len(message_obj.message)}")
+            for idx, comp in enumerate(message_obj.message):
+                logger.info(f"消息组件 {idx}: {type(comp).__name__}")
+                if hasattr(comp, '__dict__'):
+                    logger.info(f"  属性: {list(comp.__dict__.keys())}")
+            logger.info("=" * 50)
+
             reply_content = []
             has_reply = False
             has_forward_in_reply = False
@@ -45,13 +55,26 @@ class MyPlugin(Star):
                                 logger.info("被引用的消息包含转发内容")
                                 # 提取转发消息中的内容
                                 forward_messages = reply_item.node_list
-                                for node in forward_messages:
+                                logger.info(f"引用的转发消息包含 {len(forward_messages)} 个节点")
+
+                                for idx, node in enumerate(forward_messages):
+                                    logger.info(f"处理引用消息的第 {idx + 1} 个节点")
                                     if hasattr(node, 'message_chain'):
                                         for item in node.message_chain:
+                                            # 尝试提取文本内容
+                                            text_content = None
                                             if hasattr(item, 'data') and isinstance(item.data, str):
-                                                reply_content.append(item.data)
-                                            elif hasattr(item, 'text'):
-                                                reply_content.append(item.text)
+                                                text_content = item.data
+                                            elif hasattr(item, 'text') and isinstance(item.text, str):
+                                                text_content = item.text
+                                            elif isinstance(item, Comp.Plain):
+                                                text_content = item.text
+                                            elif isinstance(item, str):
+                                                text_content = item
+
+                                            if text_content and text_content.strip():
+                                                reply_content.append(text_content.strip())
+                                                logger.info(f"提取到内容: {text_content[:50]}...")
                     break
 
             # 第二步：如果当前消息本身包含转发（没有引用的情况）
@@ -61,13 +84,27 @@ class MyPlugin(Star):
                         has_forward_in_reply = True
                         logger.info("当前消息包含转发内容")
                         forward_messages = component.node_list
-                        for node in forward_messages:
+                        logger.info(f"转发消息包含 {len(forward_messages)} 个节点")
+
+                        for idx, node in enumerate(forward_messages):
+                            logger.info(f"处理第 {idx + 1} 个节点")
+                            # 提取节点中的消息链
                             if hasattr(node, 'message_chain'):
                                 for item in node.message_chain:
+                                    # 尝试提取文本内容
+                                    text_content = None
                                     if hasattr(item, 'data') and isinstance(item.data, str):
-                                        reply_content.append(item.data)
-                                    elif hasattr(item, 'text'):
-                                        reply_content.append(item.text)
+                                        text_content = item.data
+                                    elif hasattr(item, 'text') and isinstance(item.text, str):
+                                        text_content = item.text
+                                    elif isinstance(item, Comp.Plain):
+                                        text_content = item.text
+                                    elif isinstance(item, str):
+                                        text_content = item
+
+                                    if text_content and text_content.strip():
+                                        reply_content.append(text_content.strip())
+                                        logger.info(f"提取到内容: {text_content[:50]}...")
                         break
 
             # 检查是否找到引用或转发消息
