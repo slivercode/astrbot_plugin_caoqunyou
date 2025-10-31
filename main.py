@@ -8,9 +8,53 @@ import astrbot.api.message_components as Comp
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
+        # 缓存每个会话的最近转发消息
+        self.last_forward_messages = {}
 
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
+
+    # 监听所有消息，缓存转发消息
+    @filter.message_type("group", "private", "guild")
+    async def cache_forward_messages(self, event: AstrMessageEvent):
+        """自动缓存所有转发消息，无需回复"""
+        try:
+            message_obj = event.message_obj
+            session_id = event.session_id  # 使用 session_id 区分不同会话
+
+            # 检查是否包含转发消息
+            for component in message_obj.message:
+                if isinstance(component, Comp.Forward):
+                    # 提取转发内容
+                    forward_content = []
+                    forward_messages = component.node_list
+
+                    for node in forward_messages:
+                        if hasattr(node, 'message_chain'):
+                            for item in node.message_chain:
+                                text_content = None
+                                if hasattr(item, 'data') and isinstance(item.data, str):
+                                    text_content = item.data
+                                elif hasattr(item, 'text') and isinstance(item.text, str):
+                                    text_content = item.text
+                                elif isinstance(item, Comp.Plain):
+                                    text_content = item.text
+                                elif isinstance(item, str):
+                                    text_content = item
+
+                                if text_content and text_content.strip():
+                                    forward_content.append(text_content.strip())
+
+                    # 缓存这个会话的转发消息
+                    if forward_content:
+                        self.last_forward_messages[session_id] = forward_content
+                        logger.info(f"缓存了会话 {session_id} 的转发消息，共 {len(forward_content)} 条")
+                    break
+        except Exception as e:
+            logger.debug(f"缓存转发消息时出错: {e}")
+
+        # 不返回任何结果，让其他插件继续处理
+        return
 
     # 注册指令的装饰器。指令名为 helloworld。注册成功后，发送 `/helloworld` 就会触发这个指令，并回复 `你好, {user_name}!`
 
@@ -109,17 +153,27 @@ class MyPlugin(Star):
 
             # 检查是否找到引用或转发消息
             if not has_reply and not has_forward_in_reply:
-                yield event.plain_result(
-                    "❌ 未检测到引用或转发消息\n💡 使用方法：回复/引用别人发送的转发消息，然后发送 /何意味 命令")
-                return
+                # 尝试使用缓存的转发消息
+                session_id = event.session_id
+                if session_id in self.last_forward_messages:
+                    reply_content = self.last_forward_messages[session_id]
+                    logger.info(f"使用缓存的转发消息，共 {len(reply_content)} 条")
+                else:
+                    yield event.plain_result(
+                        "❌ 未检测到引用或转发消息\n\n💡 使用方法（任选一种）：\n1. 回复/引用转发消息，然后发送 /何意味\n2. 发送转发消息后，直接发送 /何意味")
+                    return
 
             # 如果找到了引用但没有提取到转发内容
             if has_reply and not reply_content:
-                # 尝试获取消息的原始内容
-                # 注意：某些平台可能不提供完整的被引用消息内容
-                yield event.plain_result(
-                    "❌ 无法获取被引用消息的转发内容\n💡 提示：\n1. 请确保回复的是转发消息\n2. 某些平台可能不支持获取引用消息的完整内容\n3. 可以直接转发消息后使用 /何意味 命令")
-                return
+                # 尝试使用缓存的转发消息作为备选
+                session_id = event.session_id
+                if session_id in self.last_forward_messages:
+                    reply_content = self.last_forward_messages[session_id]
+                    logger.info(f"引用消息内容为空，使用缓存的转发消息，共 {len(reply_content)} 条")
+                else:
+                    yield event.plain_result(
+                        "❌ 无法获取被引用消息的转发内容\n\n💡 提示：\n1. 请确保回复的是转发消息\n2. 某些平台可能不支持获取引用消息的完整内容\n3. 可以先发送转发消息，然后直接发送 /何意味")
+                    return
 
             logger.info(f"成功提取到 {len(reply_content)} 条消息内容")
 
